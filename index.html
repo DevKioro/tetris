@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Sweet Tetris</title>
+<style>
+  :root{--pink:#ff8fb8;--rose:#ff5c9a;--lav:#c9b6ff;--mint:#a8f0d8;--ink:#5a3a63}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:"Segoe UI",system-ui,sans-serif;color:var(--ink);
+    background:linear-gradient(135deg,#ffe3f0,#e9defe 50%,#d9f7ee);overflow:hidden}
+  .float{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+  .float span{position:absolute;bottom:-40px;animation:up linear infinite;opacity:.55}
+  @keyframes up{to{transform:translateY(-115vh) rotate(40deg)}}
+  .wrap{display:flex;gap:16px;align-items:flex-start;padding:16px;position:relative}
+  .panel{width:130px;display:flex;flex-direction:column;gap:12px}
+  .card{background:rgba(255,255,255,.7);backdrop-filter:blur(6px);border-radius:18px;padding:10px 12px;
+    box-shadow:0 6px 18px rgba(255,92,154,.18);text-align:center}
+  .card h3{margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--rose)}
+  .card .v{font-size:22px;font-weight:700}
+  canvas.mini{display:block;margin:0 auto}
+  h1{margin:0 0 8px;text-align:center;font-size:26px;color:var(--rose);font-family:"Segoe Script","Comic Sans MS",cursive}
+  #board{border-radius:18px;background:rgba(255,255,255,.55);box-shadow:0 8px 28px rgba(201,182,255,.6);
+    border:4px solid #fff;display:block}
+  .stage{position:relative}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;background:rgba(255,240,248,.82);border-radius:18px;text-align:center;padding:16px}
+  .overlay.hidden{display:none}
+  .overlay h2{margin:0;font-size:28px;color:var(--rose)}
+  button{border:0;border-radius:999px;padding:10px 22px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;
+    background:linear-gradient(135deg,var(--pink),var(--rose));box-shadow:0 4px 12px rgba(255,92,154,.4)}
+  button:active{transform:scale(.95)}
+  .help{font-size:11px;line-height:1.6;text-align:left}
+  .touch{display:none;position:fixed;bottom:10px;left:0;right:0;justify-content:center;gap:8px}
+  .touch button{width:56px;height:56px;padding:0;font-size:22px}
+  @media(max-width:620px),(pointer:coarse){
+    body{min-height:var(--vh,100%);display:block;overflow-x:hidden;overflow-y:auto}
+    h1{display:none}
+    /* сверху — компактные карточки, под ними поле (размер задаёт fitBoard()), сразу под полем — панель кнопок */
+    .wrap{display:flex;flex-direction:row;flex-wrap:wrap;align-content:flex-start;justify-content:center;
+      gap:6px;padding:8px 8px 4px;width:100%}
+    .panel{display:contents}
+    .card{flex:1 1 calc(33% - 6px);padding:4px 6px;border-radius:12px}
+    .card h3{font-size:10px;margin-bottom:2px}
+    .card .v{font-size:16px}
+    canvas.mini{width:48px;height:auto}
+    .help{display:none}
+    .wrap>div:not(.panel){order:10;flex:0 0 100%;display:flex;justify-content:center}
+    #board{border-width:3px}
+    .touch{display:flex;position:static;gap:6px;padding:8px 8px calc(24px + env(safe-area-inset-bottom));
+      background:rgba(255,255,255,.6);backdrop-filter:blur(6px);border-radius:20px 20px 0 0}
+    .touch button{flex:1;max-width:60px;height:52px;width:auto;font-size:20px}
+  }
+</style>
+</head>
+<body>
+<div class="float" id="float"></div>
+<div class="wrap">
+  <div class="panel">
+    <div class="card"><h3>Запас 💼</h3><canvas class="mini" id="hold" width="90" height="70"></canvas></div>
+    <div class="card help side2"><h3>Управление</h3>
+      ← → движение<br>↑ / X поворот<br>↓ мягкий спуск<br>Пробел — сброс<br>C — запас<br>P — пауза</div>
+  </div>
+  <div>
+    <h1>✨ Sweet Tetris ✨</h1>
+    <div class="stage">
+      <canvas id="board" width="300" height="600"></canvas>
+      <div class="overlay" id="ov">
+        <h2 id="ovt">Готова? 💖</h2>
+        <div id="ovs" style="font-size:14px">Собирай линии, лови комбо и побей свой рекорд!</div>
+        <button id="go">Играть</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="card"><h3>Дальше 🎀</h3><canvas class="mini" id="next" width="90" height="70"></canvas></div>
+    <div class="card"><h3>Очки</h3><div class="v" id="score">0</div></div>
+    <div class="card"><h3>Линии</h3><div class="v" id="lines">0</div></div>
+    <div class="card"><h3>Уровень</h3><div class="v" id="level">1</div></div>
+    <div class="card"><h3>Рекорд 👑</h3><div class="v" id="best">0</div></div>
+  </div>
+</div>
+<div class="touch">
+  <button data-a="left">◀</button><button data-a="rot">⟳</button><button data-a="down">▼</button>
+  <button data-a="right">▶</button><button data-a="drop">⤓</button><button data-a="hold">💼</button>
+</div>
+<script>
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    r=Math.min(r,w/2,h/2);this.moveTo(x+r,y);this.arcTo(x+w,y,x+w,y+h,r);this.arcTo(x+w,y+h,x,y+h,r);
+    this.arcTo(x,y+h,x,y,r);this.arcTo(x,y,x+w,y,r);this.closePath()}}
+const COLS=10,ROWS=20,S=30;
+const cv=document.getElementById('board'),ctx=cv.getContext('2d');
+const hcv=document.getElementById('hold').getContext('2d'),ncv=document.getElementById('next').getContext('2d');
+const SHAPES={
+  I:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O:[[1,1],[1,1]],
+  T:[[0,1,0],[1,1,1],[0,0,0]],
+  S:[[0,1,1],[1,1,0],[0,0,0]],
+  Z:[[1,1,0],[0,1,1],[0,0,0]],
+  J:[[1,0,0],[1,1,1],[0,0,0]],
+  L:[[0,0,1],[1,1,1],[0,0,0]]};
+const COLORS={I:'#7fd8ff',O:'#ffe27a',T:'#c79bff',S:'#8ff0b8',Z:'#ff8fa8',J:'#8fa8ff',L:'#ffb27a'};
+const PTS=[0,100,300,500,800];
+let grid,cur,nextT,holdT,canHold,score,lines,level,best,over,paused,running,dropTimer,last,bag=[],parts=[],flash=[];
+try{best=+(localStorage.getItem('sweetBest')||0)}catch(e){best=0}
+document.getElementById('best').textContent=best;
+
+function rnd(){if(!bag.length){bag=Object.keys(SHAPES).sort(()=>Math.random()-.5)}return bag.pop()}
+function mk(t){return{t,m:SHAPES[t].map(r=>r.slice()),x:Math.floor((COLS-SHAPES[t][0].length)/2),y:t==='I'?-1:0}}
+function rot(m){return m[0].map((_,i)=>m.map(r=>r[i]).reverse())}
+function hit(p,m=p.m,x=p.x,y=p.y){
+  for(let r=0;r<m.length;r++)for(let c=0;c<m[r].length;c++)if(m[r][c]){
+    const gx=x+c,gy=y+r;if(gx<0||gx>=COLS||gy>=ROWS)return true;if(gy>=0&&grid[gy][gx])return true}
+  return false}
+function reset(){
+  grid=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  score=lines=0;level=1;over=false;paused=false;holdT=null;canHold=true;bag=[];parts=[];flash=[];
+  nextT=rnd();spawn();upd();draw()}
+function spawn(){
+  cur=mk(nextT);nextT=rnd();canHold=true;
+  if(hit(cur)){over=true;running=false;
+    if(score>best){best=score;try{localStorage.setItem('sweetBest',best)}catch(e){}}
+    showOv('Игра окончена 💔','Твой счёт: '+score+(score>=best&&score>0?' — новый рекорд! 👑':''),'Ещё раз');}
+  drawMini()}
+function showOv(t,s,b){ovt.textContent=t;ovs.textContent=s;go.textContent=b;ov.classList.remove('hidden')}
+function upd(){scoreEl.textContent=score;linesEl.textContent=lines;levelEl.textContent=level;bestEl.textContent=best}
+const ov=document.getElementById('ov'),ovt=document.getElementById('ovt'),ovs=document.getElementById('ovs'),go=document.getElementById('go'),
+ scoreEl=document.getElementById('score'),linesEl=document.getElementById('lines'),levelEl=document.getElementById('level'),bestEl=document.getElementById('best');
+
+function lock(){
+  cur.m.forEach((row,r)=>row.forEach((v,c)=>{if(v&&cur.y+r>=0)grid[cur.y+r][cur.x+c]=cur.t}));
+  let full=[];for(let r=0;r<ROWS;r++)if(grid[r].every(Boolean))full.push(r);
+  if(full.length){
+    full.forEach(r=>{for(let c=0;c<COLS;c++){burst(c*S+S/2,r*S+S/2,COLORS[grid[r][c]])}});
+    flash=full.map(r=>({r,t:1}));
+    grid=grid.filter((_,i)=>!full.includes(i));
+    while(grid.length<ROWS)grid.unshift(Array(COLS).fill(null));
+    score+=PTS[full.length]*level;lines+=full.length;
+    level=1+Math.floor(lines/10);
+    if(full.length===4)toast('ТЕТРИС! 💖')}
+  upd();spawn()}
+function burst(x,y,col){for(let i=0;i<5;i++)parts.push({x,y,vx:(Math.random()-.5)*5,vy:-Math.random()*4-1,l:1,col,h:Math.random()<.4})}
+let toastT=0,toastTxt='';function toast(t){toastTxt=t;toastT=1.2}
+
+function move(dx){if(!hit(cur,cur.m,cur.x+dx,cur.y))cur.x+=dx}
+function rotate(){const m=rot(cur.m);for(const k of [0,-1,1,-2,2])if(!hit(cur,m,cur.x+k,cur.y)){cur.m=m;cur.x+=k;return}}
+function down(){if(!hit(cur,cur.m,cur.x,cur.y+1)){cur.y++;return true}lock();return false}
+function drop(){let n=0;while(!hit(cur,cur.m,cur.x,cur.y+1)){cur.y++;n++}score+=n*2;lock()}
+function hold(){if(!canHold)return;const t=cur.t;
+  if(holdT){cur=mk(holdT)}else{cur=mk(nextT);nextT=rnd()}
+  holdT=t;canHold=false;drawMini()}
+
+function block(g,x,y,s,col,a=1){
+  g.globalAlpha=a;
+  const gr=g.createLinearGradient(x,y,x+s,y+s);gr.addColorStop(0,'#fff');gr.addColorStop(.35,col);gr.addColorStop(1,col);
+  g.fillStyle=gr;g.beginPath();g.roundRect(x+1,y+1,s-2,s-2,7);g.fill();
+  g.fillStyle='rgba(255,255,255,.55)';g.beginPath();g.roundRect(x+5,y+4,s-14,5,3);g.fill();
+  g.strokeStyle='rgba(255,255,255,.9)';g.lineWidth=1.5;g.beginPath();g.roundRect(x+1,y+1,s-2,s-2,7);g.stroke();
+  g.globalAlpha=1}
+function heart(g,x,y,s,col){g.fillStyle=col;g.save();g.translate(x,y);g.scale(s,s);g.beginPath();
+  g.moveTo(0,.3);g.bezierCurveTo(-1,-.5,-.3,-1,0,-.4);g.bezierCurveTo(.3,-1,1,-.5,0,.3);g.fill();g.restore()}
+
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.strokeStyle='rgba(201,182,255,.25)';ctx.lineWidth=1;
+  for(let i=1;i<COLS;i++){ctx.beginPath();ctx.moveTo(i*S,0);ctx.lineTo(i*S,ROWS*S);ctx.stroke()}
+  for(let i=1;i<ROWS;i++){ctx.beginPath();ctx.moveTo(0,i*S);ctx.lineTo(COLS*S,i*S);ctx.stroke()}
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(grid[r][c])block(ctx,c*S,r*S,S,COLORS[grid[r][c]]);
+  if(cur&&!over){
+    let gy=cur.y;while(!hit(cur,cur.m,cur.x,gy+1))gy++;
+    cur.m.forEach((row,r)=>row.forEach((v,c)=>{if(v)block(ctx,(cur.x+c)*S,(gy+r)*S,S,COLORS[cur.t],.25)}));
+    cur.m.forEach((row,r)=>row.forEach((v,c)=>{if(v&&cur.y+r>=0)block(ctx,(cur.x+c)*S,(cur.y+r)*S,S,COLORS[cur.t])}))}
+  flash.forEach(f=>{ctx.fillStyle=`rgba(255,255,255,${f.t})`;ctx.fillRect(0,f.r*S,COLS*S,S)});
+  parts.forEach(p=>{ctx.globalAlpha=Math.max(p.l,0);if(p.h)heart(ctx,p.x,p.y,10,p.col);else{ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,3,0,7);ctx.fill()}ctx.globalAlpha=1});
+  if(toastT>0){ctx.globalAlpha=Math.min(toastT,1);ctx.fillStyle='#ff5c9a';ctx.font='bold 32px "Segoe Script",cursive';ctx.textAlign='center';
+    ctx.strokeStyle='#fff';ctx.lineWidth=5;ctx.strokeText(toastTxt,150,260);ctx.fillText(toastTxt,150,260);ctx.globalAlpha=1}}
+function mini(g,t){g.clearRect(0,0,90,70);if(!t)return;const m=SHAPES[t],s=18,w=m[0].length*s,h=m.length*s;
+  let minr=9,maxr=-1;m.forEach((r,i)=>{if(r.some(Boolean)){minr=Math.min(minr,i);maxr=Math.max(maxr,i)}});
+  const ox=(90-w)/2,oy=(70-(maxr-minr+1)*s)/2-minr*s;
+  m.forEach((row,r)=>row.forEach((v,c)=>{if(v)block(g,ox+c*s,oy+r*s,s,COLORS[t])}))}
+function drawMini(){mini(hcv,holdT);mini(ncv,nextT)}
+
+function tick(ts){
+  const dt=Math.min((ts-last)/1000,.1);last=ts;
+  if(running&&!paused){
+    dropTimer+=dt;const iv=Math.max(.08,.8*Math.pow(.85,level-1));
+    while(dropTimer>=iv&&running){dropTimer-=iv;down()}}
+  parts.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.25;p.l-=dt*1.4});parts=parts.filter(p=>p.l>0);
+  flash.forEach(f=>f.t-=dt*4);flash=flash.filter(f=>f.t>0);if(toastT>0)toastT-=dt;
+  draw();requestAnimationFrame(tick)}
+
+function act(a){
+  if(!running||paused&&a!=='pause')return;
+  if(a==='left')move(-1);else if(a==='right')move(1);else if(a==='rot')rotate();
+  else if(a==='down'){if(down())score++;upd()}else if(a==='drop'){drop();upd()}else if(a==='hold')hold()}
+function pause(){if(!running)return;paused=!paused;
+  if(paused)showOv('Пауза ☕','Передохни минутку','Продолжить');else ov.classList.add('hidden')}
+document.addEventListener('keydown',e=>{
+  const k={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'rot',x:'rot',X:'rot',ArrowDown:'down',' ':'drop',c:'hold',C:'hold'}[e.key];
+  if(k){e.preventDefault();act(k)}
+  if(e.key==='p'||e.key==='P'||e.key==='Escape')pause()});
+document.querySelectorAll('.touch button').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();act(b.dataset.a)}));
+go.onclick=()=>{
+  if(paused){pause();return}
+  reset();running=true;dropTimer=0;ov.classList.add('hidden')};
+
+// плавающие сердечки и звёздочки на фоне
+const fl=document.getElementById('float'),em=['💖','✨','🌸','🎀','💜','⭐'];
+for(let i=0;i<16;i++){const s=document.createElement('span');s.textContent=em[i%em.length];
+  s.style.left=Math.random()*100+'%';s.style.fontSize=(14+Math.random()*20)+'px';
+  s.style.animationDuration=(10+Math.random()*14)+'s';s.style.animationDelay=(-Math.random()*20)+'s';fl.appendChild(s)}
+
+// на телефоне подгоняем поле под свободное место между карточками и панелью кнопок
+function fitBoard(){
+  // реально видимая высота (на iPhone учитывает панели Safari/Телеграма)
+  // берём наименьшее из измерений: svh = высота при видимых верхней и нижней панелях браузера
+  const cands=[innerHeight,document.documentElement.clientHeight];
+  if(window.visualViewport)cands.push(visualViewport.height+visualViewport.offsetTop);
+  ['100svh','100dvh','100vh'].forEach(u=>{
+    if(!(window.CSS&&CSS.supports('height',u)))return;
+    const p=document.createElement('div');p.style.cssText='position:fixed;left:0;top:0;width:0;height:'+u+';visibility:hidden;pointer-events:none';
+    document.body.appendChild(p);const h=p.getBoundingClientRect().height;p.remove();if(h>0)cands.push(h)});
+  const vh=Math.floor(Math.min(...cands.filter(h=>h>0)));
+  document.documentElement.style.setProperty('--vh',vh+'px');
+  const mob=matchMedia('(max-width:620px),(pointer:coarse)').matches;
+  if(!mob){cv.style.width=cv.style.height='';return}
+  const stage=cv.parentElement,wrapTop=stage.getBoundingClientRect().top;
+  const tb=document.querySelector('.touch').getBoundingClientRect().top;
+  // запас на нижнюю панель браузера, которую страница измерить не может (на Android она часто закрывает низ экрана)
+  const SAFE=110,touchH=document.querySelector('.touch').offsetHeight;
+  const h=Math.max(160,vh-wrapTop-touchH-SAFE);
+  const w=Math.min(h/2,innerWidth-16);
+  cv.style.width=w+'px';cv.style.height=(w*2)+'px'}
+addEventListener('resize',fitBoard);if(window.visualViewport)visualViewport.addEventListener('resize',fitBoard);addEventListener('orientationchange',fitBoard);
+reset();running=false;fitBoard();setTimeout(fitBoard,100);last=performance.now();requestAnimationFrame(tick);
+</script>
+</body>
+</html>
